@@ -8,6 +8,9 @@ S3_TARGET_DIR="s3://datatests/twitter"
 ZOOKEEPER_HOST="localhost"
 ZOOKEEPER_PORT=2181
 
+#topic to consume
+KAFKA_TOPIC="twitter"
+
 #BLCOK_SIZE refers to the amount of incomming data to buffer to the local file system before flushing to s3
 BLOCK_SIZE=10485760 #10 megabytes
 
