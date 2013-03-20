@@ -8,9 +8,9 @@ import datetime
 import time
 
 tmpFile = None
-exiting = False
 s3CmdDir = None
 s3TargetDir = None
+exiting = False
 
 def bufferBlock(blockSize):
     global tmpFile, exiting
@@ -32,10 +32,13 @@ def storeBlock():
 
     filePath = tmpFile.name
     tmpFileBaseName = os.path.basename(filePath)
+
+    #target file name formatted to sort alphabetacally by newest file and be safe from duplicates
     targetFileName = "%04d-%02d-%02d-%d-%07d-%s" % (now.year, now.month, now.day, time.mktime(now.timetuple()), now.microsecond, tmpFileBaseName)
     targetFullPath = s3TargetDir + "/" + targetFileName
 
     s3CmdOutput = subprocess.check_output([s3CmdDir + "/s3cmd", "put", filePath, targetFullPath])
+    #todo: error handling here
 
     os.unlink(filePath)
 
@@ -47,14 +50,15 @@ def beforeExit():
     storeBlock()
 
 def main(argv):
-    atexit.register(beforeExit)
-    blockSize = 1024 * 1024 * 10 #10 megs
     global s3CmdDir, s3TargetDir
+
+    #make sure we flush any temporary local data to s3 before exiting
+    atexit.register(beforeExit)
 
     try:
         opts, args = getopt.getopt(argv[1:], "", ["blocksize=", "s3cmd-dir=", "s3target-dir="])
     except getopt.GetoptError:
-        print("options error")
+        print("invalid option error")
         return 2
     
     for opt, arg in opts:
@@ -65,8 +69,8 @@ def main(argv):
         elif opt in ("--s3target-dir"):
             s3TargetDir = arg
     
-    if (s3CmdDir == None or s3TargetDir == None):
-        print("options error")
+    if (s3CmdDir == None or s3TargetDir == None or blockSize == None):
+        print("one of the required options was missing")
         return 2
 
     while True:
