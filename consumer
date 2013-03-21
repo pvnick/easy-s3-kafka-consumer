@@ -90,8 +90,8 @@ class Consumer:
 
     def beforeExit(self):
         print("Exit signal detected; cleaning up")
-        self.storeBlock()
         self.consoleConsumerProc.terminate()
+        self.storeBlock()
 
 
 def main(argv):
