@@ -10,15 +10,14 @@ import time
 tmpFile = None
 s3CmdDir = None
 s3TargetDir = None
-exiting = False
 
 def bufferBlock(blockSize):
-    global tmpFile, exiting
+    global tmpFile
 
     fileSize = 0
     tmpFile = tempfile.NamedTemporaryFile(delete=False)
 
-    while (exiting == False and fileSize < blockSize):
+    while (fileSize < blockSize):
         s = sys.stdin.readline()
         tmpFile.write(s)
         fileSize += len(s)
@@ -43,9 +42,8 @@ def storeBlock():
     os.unlink(filePath)
 
 def beforeExit():
-    global exiting, tmpFile
+    global tmpFile
 
-    exiting = True
     tmpFile.close()
     storeBlock()
 
