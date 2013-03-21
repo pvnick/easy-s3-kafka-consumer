@@ -130,7 +130,7 @@ def main(argv):
         s3CmdDir = s3CmdDir,
         kafkaBinDir = kafkaBinDir,
         s3TargetDir = s3TargetDir,
-        kafkaTopic = topic,
+        kafkaTopic = topic
     )
 
     if (blockSize != None):
