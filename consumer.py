@@ -1,7 +1,5 @@
 #!/usr/bin/python
 
-import sys
-import getopt
 import tempfile as tf
 import os
 import atexit
@@ -14,19 +12,21 @@ class Consumer:
     tmpFilePath = ""
     s3CmdDir = ""
     kafkaBinDir = ""
-    s3TargetDir = ""
+    s3TargetPrefix = ""
     kafkaTopic = ""
     blockSize = 0
     zookeeper = ""
     consoleConsumerProc = None
+    dataPreprocessorCallback = None
 
-    def __init__(self, s3CmdDir, kafkaBinDir, s3TargetDir, kafkaTopic, blockSize = 1024 * 1024 * 10, zookeeper = "localhost:2181"):
+    def __init__(self, s3CmdDir, kafkaBinDir, s3TargetPrefix, kafkaTopic, blockSize = 1024 * 1024 * 10, zookeeper = "localhost:2181", dataPreprocessorCallback = None):
         self.s3CmdDir = s3CmdDir.rstrip("/")
         self.kafkaBinDir = kafkaBinDir.rstrip("/")
-        self.s3TargetDir = s3TargetDir.rstrip("/")
+        self.s3TargetPrefix = s3TargetPrefix.rstrip("/")
         self.kafkaTopic = kafkaTopic
         self.blockSize = blockSize
         self.zookeeper = zookeeper
+        self.dataPreprocessorCallback = dataPreprocessorCallback
 
         #take some liberties with exit behavior to ensure we always flush temporary files from disk to s3
         self.registerExitHandler()
@@ -43,7 +43,7 @@ class Consumer:
         while True:
             #temporarily store data locally on disk
             self.bufferBlock()
-
+            
             #flush to s3 once files get large enough (or if the application exits - see registerExitHandler)
             self.storeBlock()
 
@@ -58,6 +58,10 @@ class Consumer:
         consumedData = self.consoleConsumerProc.stdout
 
         for line in iter(consumedData.readline, ""):
+            #if a data preprocessor has been specified then pass the whole line to them and write what it passes back
+            if (self.dataPreprocessorCallback != None):
+                line = self.dataPreprocessorCallback(line)
+
             self.tmpFile.write(line)
             fileSize += len(line)
 
@@ -77,7 +81,7 @@ class Consumer:
 
         #target file name formatted to sort alphabetacally by newest file and be safe from duplicates
         targetFileName = "%04d-%02d-%02d-%d-%07d-%s" % (now.year, now.month, now.day, time.mktime(now.timetuple()), now.microsecond, tmpFileBaseName)
-        targetFullPath = self.s3TargetDir + "/" + targetFileName
+        targetFullPath = self.s3TargetPrefix + targetFileName
 
         s3CmdOutput = subprocess.check_output([self.s3CmdDir + "/s3cmd", "put", filePath, targetFullPath])
         #todo: error handling here
@@ -92,68 +96,3 @@ class Consumer:
         print("Exit signal detected; cleaning up")
         self.consoleConsumerProc.terminate()
         self.storeBlock()
-
-
-def main(argv):
-    try:
-        opts, args = getopt.getopt(argv[1:], "", ["blocksize=", "s3cmd-dir=", "s3-target-dir=", "kafka-bin-dir=", "topic=", "zookeeper="])
-    except getopt.GetoptError:
-        usage(argv)
-        return 2
-
-    blockSize = None
-    s3CmdDir = None
-    s3TargetDir = None
-    kafkaBinDir = None
-    topic = None
-    zookeeper = None
-    
-    for opt, arg in opts:
-        if opt == "--blocksize":
-            blockSize = int(arg)
-        elif opt == "--s3cmd-dir":
-            s3CmdDir = arg
-        elif opt == "--s3-target-dir":
-            s3TargetDir = arg
-        elif opt == "--kafka-bin-dir":
-            kafkaBinDir = arg
-        elif opt == "--topic":
-            topic = arg
-        elif opt == "--zookeeper":
-            zookeeper = arg
-
-    if (s3CmdDir == None or s3TargetDir == None or kafkaBinDir == None or topic == None):
-        usage(argv)
-        return 2
-
-    consumer = Consumer(
-        s3CmdDir = s3CmdDir,
-        kafkaBinDir = kafkaBinDir,
-        s3TargetDir = s3TargetDir,
-        kafkaTopic = topic
-    )
-
-    if (blockSize != None):
-        consumer.blockSize = blockSize
-
-    if (zookeeper != None):
-        consumer.zookeeper = zookeeper
-
-    consumer.run()
-
-def usage(argv):
-    print("""
-Usage: """ + argv[0] + """ --OPT1=val --OPT2=val ...
-
-Options:
-  --s3cmd-dir           (required) absolute path to the directory where s3cmd is stored
-  --s3-target-dir       (required) s3://bucketname/foldername/ - the s3 directory where the data will get dumped
-  --kafka-bin-dir       (required) absolute path to the directory where the kafka binary files are stored
-  --topic               (required) kafka topic to consume
-  --blocksize           (optional) amount of data to buffer to local disk before flushing to s3 (default 10 mb). flushing 
-                                   to s3 creates a new file in the bucket
-  --zookeeper           (optional) host:port for zookeeper. default is localhost:2181
-    """)
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv))

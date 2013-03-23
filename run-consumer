@@ -1,0 +1,77 @@
+#!/usr/bin/python
+
+import consumer
+import sys
+import getopt
+
+#you can set the following function as dataPreprocessorCallback when instantiating consumer
+def callbackExample(line):
+    print("line passed to data preprocessor: " + line)
+
+    #note: line includes newline character, so make sure to return that
+    return arg
+
+def main(argv):
+    try:
+        opts, args = getopt.getopt(argv[1:], "", ["blocksize=", "s3cmd-dir=", "s3-target-prefix=", "kafka-bin-dir=", "topic=", "zookeeper="])
+    except getopt.GetoptError:
+        usage(argv)
+        return 2
+
+    blockSize = None
+    s3CmdDir = None
+    s3TargetPrefix = None
+    kafkaBinDir = None
+    topic = None
+    zookeeper = None
+    
+    for opt, arg in opts:
+        if opt == "--blocksize":
+            blockSize = int(arg)
+        elif opt == "--s3cmd-dir":
+            s3CmdDir = arg
+        elif opt == "--s3-target-prefix":
+            s3TargetPrefix = arg
+        elif opt == "--kafka-bin-dir":
+            kafkaBinDir = arg
+        elif opt == "--topic":
+            topic = arg
+        elif opt == "--zookeeper":
+            zookeeper = arg
+
+    if (s3CmdDir == None or s3TargetPrefix == None or kafkaBinDir == None or topic == None):
+        usage(argv)
+        return 2
+
+    consumer = Consumer(
+        s3CmdDir = s3CmdDir,
+        kafkaBinDir = kafkaBinDir,
+        s3TargetPrefix = s3TargetPrefix,
+        kafkaTopic = topic
+    )
+
+    if (blockSize != None):
+        consumer.blockSize = blockSize
+
+    if (zookeeper != None):
+        consumer.zookeeper = zookeeper
+
+    consumer.run()
+
+def usage(argv):
+    print("""
+Usage: """ + argv[0] + """ --OPT1=val --OPT2=val ...
+
+Options:
+  --s3cmd-dir           (required) absolute path to the directory where s3cmd is stored
+  --s3-target-prefix    (required) s3://bucketname/foldername/datafileprefix_ - the s3 directory and file prefix where 
+                                   the data will get dumped
+  --kafka-bin-dir       (required) absolute path to the directory where the kafka binary files are stored
+  --topic               (required) kafka topic to consume
+  --blocksize           (optional) amount of data to buffer to local disk before flushing to s3 (default 10 mb). flushing 
+                                   to s3 creates a new file in the bucket
+  --zookeeper           (optional) host:port for zookeeper. default is localhost:2181
+    """)
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))
