@@ -2,7 +2,7 @@ package main
 
 import (
     "fmt"
-    /*"consumer"*/
+    "github.com/pvnick/easy-s3-kafka-consumer/consumer"
 )
 
 func main() {
