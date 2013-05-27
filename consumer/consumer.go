@@ -1,5 +1,5 @@
 package consumer
 
-func hello_world() {
+func Hello_world() string {
     return "foobar"
 }
