@@ -8,49 +8,74 @@ import (
     "runtime"
     //"time"
     "syscall"
-    "github.com/pvnick/easy-s3-kafka-consumer/reader"
+    "github.com/pvnick/easy-s3-kafka-consumer/consumeworker"
 )
 
 var coresToUtilize int
+var childProcs []*os.Process
 
-func testS3Cmd() {
+func testS3Cmd(s3CmdPath string) {
     fmt.Println("Testing that S3Cmd works")
-    s3CmdPath, error := exec.LookPath("s3cmd")
+    testCmd := exec.Command(s3CmdPath, "ls")
+    output, error := testCmd.CombinedOutput()
     if error != nil {
-        panic(error)
-    } 
-    cmd := exec.Command(s3CmdPath, "ls")
-    output, err := cmd.CombinedOutput()
-    if err != nil {
         panic("Error testing s3cmd:\n" + string(output))
     } 
     fmt.Println("S3Cmd is working properly")
 }
 
 func enableMultiCore() {
-    //this is meant to utilize as much of our machine as possible
     runtime.GOMAXPROCS(coresToUtilize)
 }
 
 func cleanup() {
-    fmt.Println("bye now")
+    fmt.Println("Attempting to exit gracefully")
+    fmt.Println("Killing child processes")
+    for _, proc := range childProcs {
+        proc.Kill()
+    }
+    fmt.Println("Cleanup completed successfully")
 }
 
 func main() {
     fmt.Println("Initializing")
+    defer cleanup()
     coresToUtilize = runtime.NumCPU()
     enableMultiCore()
-    testS3Cmd()
-    defer cleanup()
-
-    readers := make([]*reader.Instance, coresToUtilize)
-    for i := 0; i < coresToUtilize; i++ {
-        readers[i] = reader.New()
-        go readers[i].Start()
+    
+    fmt.Println("skipping s3cmd check")
+    if false {
+        s3CmdPath, error := exec.LookPath("s3cmd")
+        if error != nil {
+            panic(error)
+        } 
+        testS3Cmd(s3CmdPath)
+    }
+    
+    workerConfig := consumeworker.Config{
+        S3CmdPath: "",
+        KafkaCLIConsumerPath: "yes",
+        S3TargetPrefix: "",
+        KafkaTopic: "",
+        Zookeeper: "localhost:2181",
+        BlockSize: 1024 * 1024 * 10,
     }
 
-    //capture any unexpected exit signals so we can kill all the cli consumers in the cleanup
-    c := make(chan os.Signal, 1)
-    signal.Notify(c, syscall.SIGTERM, syscall.SIGINT, syscall.SIGKILL, syscall.SIGHUP)
-    <-c
+    fmt.Println("Launching workers")
+    workers := make([]*consumeworker.Instance, coresToUtilize)
+    newChildProc := make(chan *os.Process)
+    childProcs = make([]*os.Process, coresToUtilize)
+    for i := 0; i < coresToUtilize; i++ {
+        workers[i] = consumeworker.New(workerConfig)
+        //each worker launches an instance of the kafka cli consumer
+        //we receive the new child process  through the newChildProc channel
+        go workers[i].Start(newChildProc)
+        childProcs[i] = <-newChildProc
+    }
+
+    fmt.Println("Consumer started successfully")
+    exitSignalChan := make(chan os.Signal, 1)
+    signal.Notify(exitSignalChan, syscall.SIGTERM, syscall.SIGINT, syscall.SIGKILL, syscall.SIGHUP)
+    <-exitSignalChan
+    fmt.Println("Caught exit signal")
 }
