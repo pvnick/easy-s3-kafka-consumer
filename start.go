@@ -16,8 +16,8 @@ var workers []*consumeworker.Instance
 func testS3Cmd(s3CmdPath string) {
     log.Println("Testing that S3Cmd works")
     testCmd := exec.Command(s3CmdPath, "ls")
-    output, error := testCmd.CombinedOutput()
-    if error != nil {
+    output, err := testCmd.CombinedOutput()
+    if err != nil {
         log.Fatal("Error testing s3cmd:\n", string(output))
     } 
     log.Println("S3Cmd is working properly")
@@ -31,8 +31,9 @@ func cleanup() {
     log.Println("Attempting to exit gracefully")
     log.Println("Killing child processes")
     for _, worker := range workers {
-        proc.CLIConsumerProc.Kill()
+        go proc.Apoptosis()
     }
+    //todo: wait for all to complete
     log.Println("Cleanup completed successfully")
 }
 
@@ -43,6 +44,7 @@ func main() {
     enableMultiCore()
     
     config := consumeworker.Config{
+        TempDir: "/tmp/easys3",
         S3CmdPath: "/usr/local/bin/s3cmd",
         KafkaCLIConsumerPath: "/usr/local/kafka_install/bin/kafka-console-consumer.sh",
         S3TargetPrefix: "s3://pvnick_kafka_output/",
@@ -54,9 +56,11 @@ func main() {
     log.Println("skipping s3cmd check")
     if false {
         testS3Cmd(config.S3CmdPath)
+        //TODO: test kafka cli consumer
     }
     
     log.Println("Launching workers")
+    //TODO: use buffered channel sempahore to relaunch dead workers
     workers = make([]*consumeworker.Instance, coresToUtilize)
     for i := 0; i < coresToUtilize; i++ {
         workers[i] = consumeworker.New(config)
