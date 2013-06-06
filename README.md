@@ -1,6 +1,9 @@
 simple-s3-kafka-consumer
 ========================
 
+Note: this project is currently being rewritten in Go with no regard to branching, but run-consumer and consumer.py very well might work in a production system with minor modifications
+-------------------------
+
 A simple project for dumping data from kafka to S3. Great for streaming large amounts of web data into S3 for use with mapreduce.
 
 ```
