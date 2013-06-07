@@ -10,8 +10,6 @@ import (
     "github.com/pvnick/easy-s3-kafka-consumer/consumeworker"
 )
 
-var coresToUtilize int
-
 func testS3Cmd(s3CmdPath string) {
     log.Println("Testing that S3Cmd works")
     testCmd := exec.Command(s3CmdPath, "ls")
@@ -20,10 +18,6 @@ func testS3Cmd(s3CmdPath string) {
         log.Fatal("Error testing s3cmd:\n", string(output))
     } 
     log.Println("S3Cmd is working properly")
-}
-
-func enableMultiCore() {
-    runtime.GOMAXPROCS(coresToUtilize)
 }
 
 func cleanup(workerSemaphore chan *consumeworker.Instance) {
@@ -40,17 +34,7 @@ func cleanup(workerSemaphore chan *consumeworker.Instance) {
 func main() {
     log.Println("Initializing")
     coresToUtilize = runtime.NumCPU()
-    enableMultiCore()
-    
-    config := consumeworker.Config{
-        TempDir: "/tmp/easys3",
-        S3CmdPath: "yes", //"/usr/local/bin/s3cmd",
-        KafkaCLIConsumerPath: "/usr/local/kafka_install/bin/kafka-console-consumer.sh",
-        S3TargetPrefix: "s3://pvnick_kafka_output/",
-        KafkaTopic: "test-topic",
-        Zookeeper: "localhost:2181",
-        BlockSize: 1024 * 1024 * 10,
-    }
+    runtime.GOMAXPROCS(coresToUtilize)
 
     log.Println("skipping s3cmd check")
     if false {
@@ -62,7 +46,6 @@ func main() {
     exitSignalChan := make(chan os.Signal, 1)
     workerSemaphore := make(chan *consumeworker.Instance, coresToUtilize)
     signal.Notify(exitSignalChan, syscall.SIGTERM, syscall.SIGINT, syscall.SIGKILL, syscall.SIGHUP)
-    
     go func(){
         <-exitSignalChan
         alive = false
@@ -71,6 +54,15 @@ func main() {
     }()
 
     log.Println("Launching workers")
+    config := consumeworker.Config{
+        TempDir: "/tmp/easys3",
+        S3CmdPath: "yes", //"/usr/local/bin/s3cmd",
+        KafkaCLIConsumerPath: "/usr/local/kafka_install/bin/kafka-console-consumer.sh",
+        S3TargetPrefix: "s3://pvnick_kafka_output/",
+        KafkaTopic: "test-topic",
+        Zookeeper: "localhost:2181",
+        BlockSize: 1024 * 1024 * 10,
+    }
     for alive {
         worker := consumeworker.New(config)
         workerSemaphore <- worker
