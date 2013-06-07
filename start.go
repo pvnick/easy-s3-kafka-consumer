@@ -72,9 +72,10 @@ func main() {
 
     log.Println("Launching workers")
     for alive {
-        workerSemaphore <- consumeworker.New(config)
+        worker := consumeworker.New(config)
+        workerSemaphore <- worker
         go func() {
-            workers[i].Start()
+            workers.Start()
             //Start() returns when the worker dies, so keep the semaphore full with live ones
             <-workerSemaphore
         }
