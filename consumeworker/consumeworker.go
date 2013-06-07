@@ -18,6 +18,7 @@ type Config struct {
 }
 
 type Instance struct {
+    CleanedUp chan int
     config Config
     cliConsumerProc *os.Process
     alive bool
@@ -41,19 +42,20 @@ func (this *Instance) Start() {
         cmd.Start()
         this.cliConsumerProc = cmd.Process
         this.alive = true
-        for this.alive == true {
+        for this.alive {
             this.bufferBlock(outPipe)
             this.flushToS3()
             tmpOutputFileHandle.Truncate(0)
         }
     }
+    this.CleanedUp <- 1
 }
 
 func (this *Instance) Apoptosis(tombstoneMessage string) {
     if this.alive == true {
         this.alive = false
         this.cliConsumerProc.Kill()
-        log.Println(tombstoneMessage)
+        log.Println("Worker killed with message: ", tombstoneMessage)
     }
 }
 
@@ -64,11 +66,11 @@ func (this *Instance) bufferBlock(cliProcStdOut *io.Reader, tempFile *os.File) {
         //FIXME: allow custom line separators
         outLine, err := outBuf.ReadBytes('\n')
         if err != nil {
-            this.Apoptosis()
+            this.Apoptosis("Error reading line from consumer cli process")
         } else {
             _, err := tempFile.Write(outLine)
             if err != nil {
-                this.Apoptosis()
+                this.Apoptosis("Error writing line to temporary file")
             } else {
                 currBlockSize += len(outLine)
             }
@@ -82,6 +84,7 @@ func (this *Instance) flushToS3() {
 
 func New(config Config) *Instance {
     return &Instance{
+        CleanedUp: make(chan int, 1)
         config: config,
     }
 }

@@ -11,7 +11,6 @@ import (
 )
 
 var coresToUtilize int
-var workers []*consumeworker.Instance
 
 func testS3Cmd(s3CmdPath string) {
     log.Println("Testing that S3Cmd works")
@@ -27,25 +26,25 @@ func enableMultiCore() {
     runtime.GOMAXPROCS(coresToUtilize)
 }
 
-func cleanup() {
+func cleanup(workerSemaphore chan *consumeworker.Instance) {
     log.Println("Attempting to exit gracefully")
     log.Println("Killing child processes")
-    for _, worker := range workers {
-        go proc.Apoptosis()
+    for worker := range workerSemaphore {
+        log.Println("Killing worker")
+        worker.Apoptosis("Host sent kill signal")
+        <-worker.CleanedUp 
     }
-    //todo: wait for all to complete
     log.Println("Cleanup completed successfully")
 }
 
 func main() {
     log.Println("Initializing")
-    defer cleanup()
     coresToUtilize = runtime.NumCPU()
     enableMultiCore()
     
     config := consumeworker.Config{
         TempDir: "/tmp/easys3",
-        S3CmdPath: "/usr/local/bin/s3cmd",
+        S3CmdPath: "yes", //"/usr/local/bin/s3cmd",
         KafkaCLIConsumerPath: "/usr/local/kafka_install/bin/kafka-console-consumer.sh",
         S3TargetPrefix: "s3://pvnick_kafka_output/",
         KafkaTopic: "test-topic",
@@ -58,20 +57,28 @@ func main() {
         testS3Cmd(config.S3CmdPath)
         //TODO: test kafka cli consumer
     }
-    
-    log.Println("Launching workers")
-    //TODO: use buffered channel sempahore to relaunch dead workers
-    workers = make([]*consumeworker.Instance, coresToUtilize)
-    for i := 0; i < coresToUtilize; i++ {
-        workers[i] = consumeworker.New(config)
-        go workers[i].Start()
-    }
 
-    log.Println("Consumer started successfully")
-    exitSignalChan := make(chan os.Signal)
+    alive := true
+    exitSignalChan := make(chan os.Signal, 1)
+    workerSemaphore := make(chan *consumeworker.Instance, coresToUtilize)
     signal.Notify(exitSignalChan, syscall.SIGTERM, syscall.SIGINT, syscall.SIGKILL, syscall.SIGHUP)
-    //<-exitSignalChan
-    log.Println("Caught exit signal")
+    
+    go func(){
+        <-exitSignalChan
+        alive = false
+        log.Println("Caught exit signal")
+        cleanup(workerSemaphore)
+    }()
+
+    log.Println("Launching workers")
+    for alive {
+        workerSemaphore <- consumeworker.New(config)
+        go func() {
+            workers[i].Start()
+            //Start() returns when the worker dies, so keep the semaphore full with live ones
+            <-workerSemaphore
+        }
+    }
 }
 
 
