@@ -1,9 +1,6 @@
 simple-s3-kafka-consumer
 ========================
 
-Note: As a result of the recent leaks regarding NSA surveillance and the lack of privacy surrounding "big data," this project has been put on indefinite hold. This code is hereby released in to the public domain with no restrictions, but I would ask you to please be judicious with your data collection.
--------------------------
-
 A simple project for dumping data from kafka to S3. Great for streaming large amounts of web data into S3 for use with mapreduce.
 
 ```
